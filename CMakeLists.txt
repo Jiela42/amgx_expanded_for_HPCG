@@ -34,6 +34,15 @@ find_package(OpenMP)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake" ${CMAKE_MODULE_PATH})
 
+# Set the CUDAToolkit_ROOT to point to the desired CUDA installation
+set(CUDAToolkit_ROOT /usr/local/cuda-11.2)
+
+# Specify the CUDA compiler explicitly
+set(CMAKE_CUDA_COMPILER /usr/local/cuda-11.2/bin/nvcc)
+
+message(STATUS "JielaCUDA Compiler Version: ${CMAKE_CUDA_COMPILER_VERSION}")
+
+
 #disable in-place builds
 if(${CMAKE_BINARY_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
   MESSAGE(FATAL_ERROR "Error:  In-place builds are not supported. Please create a separate build directory")

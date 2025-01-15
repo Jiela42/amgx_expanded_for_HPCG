@@ -2,6 +2,19 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+# find_package(CUDAToolkit REQUIRED)
+# set(CMAKE_CUDA_STANDARD 11)
+# set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+# set(CMAKE_CUDA_ARCHITECTURES 86)
+# set(CUDAToolkit_ROOT /usr/local/cuda-11.2)
+
+
+# Specify the exact versions of the libraries you want to link against
+# set(CUDA_cublas_LIBRARY /usr/local/cuda-11.2/targets/x86_64-linux/lib/libcublas.so.11)
+# set(CUDA_cusparse_LIBRARY /usr/local/cuda-11.2/targets/x86_64-linux/lib/libcusparse.so.11)
+# set(CUDA_cusolver_LIBRARY /usr/local/cuda-11.2/targets/x86_64-linux/lib/libcusolver.so.11)
+
+
 cmake_minimum_required (VERSION 3.18)
 
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../include" "${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}")
@@ -9,10 +22,11 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../include" "${CMAKE_CUDA_TOOLK
 GET_FILENAME_COMPONENT(CMAKE_C_COMPILER_NAME "${CMAKE_C_COMPILER}" NAME)
 IF(CMAKE_C_COMPILER_NAME MATCHES cl AND NOT CMAKE_C_COMPILER_NAME MATCHES clang)
   set(libs_all CUDA::cusparse CUDA::cusolver)
-  set(dyn_libs amgxsh CUDA::cudart_static CUDA::cublas)
+  set(dyn_libs amgxsh rt dl CUDA::cudart CUDA::cublas)
 ELSE(CMAKE_C_COMPILER_NAME MATCHES cl AND NOT CMAKE_C_COMPILER_NAME MATCHES clang)
-  set(libs_all CUDA::cusparse CUDA::cusolver rt dl)
-  set(dyn_libs amgxsh rt dl CUDA::cudart_static CUDA::cublas)
+
+  set(libs_all CUDA::cusparse CUDA::cusolver)
+  set(dyn_libs amgxsh rt dl CUDA::cudart CUDA::cublas)
 ENDIF(CMAKE_C_COMPILER_NAME MATCHES cl AND NOT CMAKE_C_COMPILER_NAME MATCHES clang)
 
 ADD_EXECUTABLE(amgx_capi amgx_capi.c)
@@ -20,6 +34,18 @@ ADD_EXECUTABLE(amgx_capi amgx_capi.c)
 set(AMGX_INCLUDES ${THRUST_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../include ${CMAKE_CURRENT_SOURCE_DIR}/../core/include)
 target_include_directories( amgx_capi PUBLIC ${AMGX_INCLUDES})
 target_link_libraries ( amgx_capi ${dyn_libs} )
+
+# Add the amgx_spmv executable
+ADD_EXECUTABLE(amgx_spmv amgx_spmv_example/amgx_spmv_internal.cu)
+target_include_directories(amgx_spmv PUBLIC ${AMGX_INCLUDES})
+target_compile_options(amgx_spmv PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:-arch=sm_86>)
+target_link_libraries(amgx_spmv ${dyn_libs})
+
+# Add the HPCG benchmark executable
+ADD_EXECUTABLE(hpcg_bench HPCG_bench/HPCG_bench.cu)
+target_include_directories(hpcg_bench PUBLIC ${AMGX_INCLUDES})
+target_compile_options(hpcg_bench PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:-arch=sm_86>)
+target_link_libraries(hpcg_bench ${dyn_libs})
 
 IF(WIN32)
     IF(MSVC)
@@ -118,6 +144,7 @@ if(MPI_FOUND)
 endif(MPI_FOUND)
 
 install(TARGETS amgx_capi DESTINATION "lib/examples")
+install(TARGETS amgx_spmv DESTINATION "lib/examples")
 if(MPI_FOUND)
   install(TARGETS amgx_mpi_capi amgx_mpi_capi_agg amgx_mpi_capi_cla amgx_mpi_poisson7 DESTINATION "lib/examples")
 endif(MPI_FOUND)

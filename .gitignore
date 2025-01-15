@@ -9,3 +9,5 @@ core/src/version.cu
 ci/docker/
 install
 Release
+lib/
+thrust/

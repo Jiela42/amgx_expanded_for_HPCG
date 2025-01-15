@@ -24,14 +24,26 @@ using amgx_thrust_host_allocator = amgx::thrust_amgx_allocator<typename amgx::th
 template <class T>
 using amgx_thrust_device_allocator = amgx::thrust_amgx_allocator<typename amgx::thrust::iterator_traits<T>::value_type, AMGX_device>;
 
+// template<class InputIterator>
+// auto amgx_thrust_get_allocator(std::false_type)
+// {
+//     return amgx::thrust::host(amgx_thrust_host_allocator<InputIterator>());
+// }
+
+// template<class InputIterator>
+// auto amgx_thrust_get_allocator(std::true_type)
+// {
+//     return amgx::thrust::cuda::par_nosync(amgx_thrust_device_allocator<InputIterator>());
+// }
+
 template<class InputIterator>
-auto amgx_thrust_get_allocator(std::false_type)
+auto amgx_thrust_get_allocator(std::false_type) -> decltype(amgx::thrust::host(amgx_thrust_host_allocator<InputIterator>()))
 {
     return amgx::thrust::host(amgx_thrust_host_allocator<InputIterator>());
 }
 
 template<class InputIterator>
-auto amgx_thrust_get_allocator(std::true_type)
+auto amgx_thrust_get_allocator(std::true_type) -> decltype(amgx::thrust::cuda::par_nosync(amgx_thrust_device_allocator<InputIterator>()))
 {
     return amgx::thrust::cuda::par_nosync(amgx_thrust_device_allocator<InputIterator>());
 }
