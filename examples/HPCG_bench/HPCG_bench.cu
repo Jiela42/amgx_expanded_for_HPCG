@@ -17,11 +17,13 @@
 
 // Here are some MACROS I defined
 #define NUM_ITERATIONS 10
-#define DO_TESTS 0
+#define DO_TESTS 1
 #define AULT_NODE "41-44"
 #define MATRIX_TYPE "3d_27pt"
 #define VERSION_NAME "AMGX"
 #define ADDITIONAL_PARAMETERS ""
+#define BENCH_SPMV 0
+#define BENCH_SYMGS 1
 #define RANDOM_SEED 42
 
 // First we have all the generations we might need
@@ -257,92 +259,8 @@ typedef amgx::TemplateConfig<AMGX_device, AMGX_vecDouble, AMGX_matDouble, AMGX_i
 typedef amgx::Vector<amgx::TemplateConfig<AMGX_host, AMGX_vecDouble, AMGX_matDouble, AMGX_indInt>> VVector_h; // vector type to retrieve result
 
 
-void spmv_example(amgx::Resources& res)
-{
-    // TemplateConfig parameters:
-    // calculate on device
-    // double storage for matrix values
-    // double storage for vector values
-    // integer for indices values
-    //
-    // see include/basic_types.h for details
-
-    int nx = 8;
-    int ny = 8;
-    int nz = 8;
-
-    // generate problem
-    std::tuple<std::vector<int>, std::vector<int>, std::vector<double>, std::vector<double>> problem = generate_HPCG_problem(nx, ny, nz);
-
-    std::vector<int>& row_ptr = std::get<0>(problem);
-    std::vector<int>& col_idx = std::get<1>(problem);
-    std::vector<double>& values = std::get<2>(problem);
-    std::vector<double>& y = std::get<3>(problem);
-
-    std::vector<double> x = random_vector(RANDOM_SEED, nx * ny * nz);
-
-
-    typedef amgx::TemplateConfig<AMGX_device, AMGX_vecDouble, AMGX_matDouble, AMGX_indInt> TConfig; // Type for spmv calculation
-
-    amgx::Matrix<TConfig> A_amgx;
-    amgx::Vector<TConfig> a_amgx;
-    amgx::Vector<TConfig> x_amgx;
-    amgx::Vector<TConfig> y_amgx;
-    A_amgx.setResources(&res);
-    a_amgx.setResources(&res);
-    x_amgx.setResources(&res);
-    y_amgx.setResources(&res);
-
-    int nrows = nx * ny * nz;
-    int nnz = values.size();
-    A_amgx.resize(nrows, nrows, nnz, 1);
-    x_amgx.resize(nrows);
-    y_amgx.resize(nrows);
-    amgx::thrust::fill(y_amgx.begin(), y_amgx.end(), 0.);
-    
-    // set the matrix
-    A_amgx.row_offsets.assign(row_ptr.begin(), row_ptr.end());    
-    A_amgx.col_indices.assign(col_idx.begin(), col_idx.end());
-    A_amgx.values.assign(values.begin(), values.end());
-    //set matrix "completeness" flag
-    A_amgx.set_initialized(1);
-
-    // vector values
-    x_amgx.assign(x.begin(), x.end());
-    
-
-    // AMGX multiply 
-    amgx::multiply(A_amgx, x_amgx, y_amgx);
-
-    // get the result to host
-    VVector_h y_res_h = y_amgx;
-
-    // reference check
-    std::vector<double> y_res_ref(nrows, 0.);
-    bool err_found = false;
-    for (int r = 0; r < nrows; r++)
-    {
-        double y_res_ref = 0.;
-        for (int c = row_ptr[r]; c < row_ptr[r + 1]; c++)
-        {
-            y_res_ref += values[c]*x[col_idx[c]];
-        }
-        if (std::abs(y_res_ref - y_res_h[r]) > 1e-8)
-        {
-            printf("Difference in row %d: reference: %f, AMGX: %f\n", r, y_res_ref, y_res_h[r]);
-            err_found = true;
-        }
-    }
-
-    if (!err_found)
-        printf("Done!\n");
-}
-
 void bench_spmv(
     CudaTimer& timer,
-    amgx::Matrix<TConfig>& A_amgx,
-    amgx::Vector<TConfig>& a_amgx,
-    amgx::Vector<TConfig>& zeros_amgx,
     std::vector<double>& a,
     std::vector<int>& row_ptr,
     std::vector<int>& col_idx,
@@ -352,6 +270,33 @@ void bench_spmv(
     // we don't need to get the original data, because where we store the result needs to start out at zero
 
     int num_iterations = NUM_ITERATIONS;
+
+    amgx::Resources res;
+
+    amgx::Matrix<TConfig> A_amgx;
+    amgx::Vector<TConfig> a_amgx;
+    amgx::Vector<TConfig> zeros_amgx;
+    A_amgx.setResources(&res);
+    a_amgx.setResources(&res);
+    zeros_amgx.setResources(&res);
+
+    int nrows = row_ptr.size() - 1;
+    int nnz = values.size();
+    A_amgx.resize(nrows, nrows, nnz, 1);
+    zeros_amgx.resize(nrows);
+    a_amgx.resize(nrows);
+    // HPCG SymGS requires x to be zero in the beginning
+    amgx::thrust::fill(zeros_amgx.begin(), zeros_amgx.end(), 0.);
+    
+    // set the matrix
+    A_amgx.row_offsets.assign(row_ptr.begin(), row_ptr.end());    
+    A_amgx.col_indices.assign(col_idx.begin(), col_idx.end());
+    A_amgx.values.assign(values.begin(), values.end());
+    //set matrix "completeness" flag
+    A_amgx.set_initialized(1);
+
+    // vector values
+    a_amgx.assign(a.begin(), a.end());
 
     // first we check correctness
     if(DO_TESTS){
@@ -373,18 +318,14 @@ void bench_spmv(
             }
             if (std::abs(y_res_ref - y_res_h[r]) > 1e-8)
             {
-                printf("Difference in row %d: reference: %f, AMGX: %f\n", r, y_res_ref, y_res_h[r]);
+                printf("SPMV Test Failing: Difference in row %d: reference: %f, AMGX: %f\n", r, y_res_ref, y_res_h[r]);
                 err_found = true;
             }
         }
 
-        if (!err_found)
+        if (err_found)
             {
-                std::cout << "Test Successful" << std::endl;
-            }
-        else
-            {
-                printf("Test Failed\n");
+                printf("SPMV Test Failed\n");
                 num_iterations = 0;
             }
 
@@ -403,14 +344,92 @@ void bench_spmv(
     }
 }
 
+void sequential_symGS(
+    std::vector<int>& A_row_ptr,
+    std::vector<int>& A_col_idx,
+    std::vector<double>& A_values,
+    std::vector<double>& x,
+    std::vector<double>& y
+    )
+{
+
+    int num_rows = y.size();
+    int diag_value;
+
+    // forward pass
+    for (int i = 0; i < num_rows; i++){
+        double my_sum = 0.0;
+        for (int j = A_row_ptr[i]; j < A_row_ptr[i+1]; j++){
+            int col = A_col_idx[j];
+            double val = A_values[j];
+            my_sum -= val * x[col];
+            if(i == col){
+                diag_value = val;
+            }
+        }
+
+        double diag = diag_value;
+        double sum = diag * x[i] + y[i] + my_sum;
+        x[i] = sum / diag;           
+
+    }
+
+    // backward pass
+    for (int i = num_rows-1; i >= 0; i--){
+    double my_sum = 0.0;
+    for (int j = A_row_ptr[i]; j < A_row_ptr[i+1]; j++){
+        int col = A_col_idx[j];
+        double val = A_values[j];
+        my_sum -= val * x[col];
+        if(i == col){
+            diag_value = val;
+        }
+    }
+
+        double diag = diag_value;
+        double sum = diag * x[i] + y[i] + my_sum;
+        x[i] = sum / diag;
+
+    }
+}
+
+
+void bench_symGS(
+    CudaTimer& timer,
+    std::vector<double>& x,
+    std::vector<double>& y,
+    std::vector<int>& row_ptr,
+    std::vector<int>& col_idx,
+    std::vector<double>& values
+    ){
+
+        int num_iterations = NUM_ITERATIONS;
+
+        if(DO_TESTS){
+
+        sequential_symGS(row_ptr, col_idx, values, x, y);
+        
+        // run AMGX symGS
+
+        // compare the resulting xs
+        // VVector_h x_res_h = x_amgx;
+        // bool err_found = false;
+        // for (int i = 0; i < x.size(); i++){
+        //     if (std::abs(x_res_h[i] - x[i]) > 1e-8){
+        //         printf("SymGS Test Failing: Difference in row %d: reference: %f, AMGX: %f\n", i, x[i], x_res_h[i]);
+        //         err_found = true;
+        //     }
+        // }
+
+        // if(err_found){
+        //     printf("SymGS Test Failed\n");
+        //     num_iterations = 0;
+        // }
+
+    }
+}
+
 void run_amgx_benchmark(int nx, int ny, int nz, std::string folder_path){
-
-    // resources object
-    amgx::Resources res;
-
-    // make sure we perform any AMGX functionality within Resources lifetime
-    // spmv_example(res);
-
 
     // generate problem
     std::tuple<std::vector<int>, std::vector<int>, std::vector<double>, std::vector<double>> problem = generate_HPCG_problem(nx, ny, nz);
@@ -419,59 +438,37 @@ void run_amgx_benchmark(int nx, int ny, int nz, std::string folder_path){
     std::vector<int>& col_idx = std::get<1>(problem);
     std::vector<double>& values = std::get<2>(problem);
     std::vector<double>& y = std::get<3>(problem);
+    std::vector<double> x (nx * ny * nz, 0.0);
     std::vector<double> a = random_vector(RANDOM_SEED, nx * ny * nz);
 
-    amgx::Matrix<TConfig> A_amgx;
-    amgx::Vector<TConfig> a_amgx;
-    amgx::Vector<TConfig> x_amgx;
-    amgx::Vector<TConfig> y_amgx;
-    amgx::Vector<TConfig> zeros_amgx;
-    A_amgx.setResources(&res);
-    a_amgx.setResources(&res);
-    x_amgx.setResources(&res);
-    y_amgx.setResources(&res);
-    zeros_amgx.setResources(&res);
-
-    int nrows = nx * ny * nz;
     int nnz = values.size();
-    A_amgx.resize(nrows, nrows, nnz, 1);
-    x_amgx.resize(nrows);
-    y_amgx.resize(nrows);
-    zeros_amgx.resize(nrows);
-    a_amgx.resize(nrows);
-    // HPCG SymGS requires x to be zero in the beginning
-    amgx::thrust::fill(x_amgx.begin(), x_amgx.end(), 0.);
-    amgx::thrust::fill(zeros_amgx.begin(), zeros_amgx.end(), 0.);
-    
-    // set the matrix
-    A_amgx.row_offsets.assign(row_ptr.begin(), row_ptr.end());    
-    A_amgx.col_indices.assign(col_idx.begin(), col_idx.end());
-    A_amgx.values.assign(values.begin(), values.end());
-    //set matrix "completeness" flag
-    A_amgx.set_initialized(1);
-
-    // vector values
-    y_amgx.assign(y.begin(), y.end());
-    a_amgx.assign(a.begin(), a.end());
 
     // now we gotta greb the timer
     CudaTimer* timer = new CudaTimer(nx, ny, nz, nnz, AULT_NODE, MATRIX_TYPE, VERSION_NAME, ADDITIONAL_PARAMETERS, folder_path);
 
 
-    // functions to write:
-        // appearently the spmv requires the results to be zero initialized
-        // bench spmv
+    // appearently the spmv requires the results to be zero initialized
+    if (BENCH_SPMV){
         bench_spmv(
             *timer,
-            A_amgx,
-            a_amgx,
-            zeros_amgx,
             a,
             row_ptr,
             col_idx,
             values
         );
-        // bench SymGS
+    }
+
+    if (BENCH_SYMGS){
+        bench_symGS(
+            *timer,
+            x,
+            y,
+            row_ptr,
+            col_idx,
+            values
+        );
+    }
+
 
     delete timer;
 }
@@ -485,22 +482,21 @@ int main(int argc, char* argv[])
 
     // generate a timestamped folder
     std::string base_path = "../../HighPerformanceHPCG_Thesis/timing_results/";
-    // base_path = "../../HighPerformanceHPCG_Thesis/dummy_timing_results/";
+    base_path = "../../HighPerformanceHPCG_Thesis/dummy_timing_results/";
 
     std::string folder_path = createTimestampedFolder(base_path);
     folder_path += "/";
 
     std::cout << "Starting Benchmark" << std::endl;
     run_amgx_benchmark(8, 8, 8, folder_path);
-    run_amgx_benchmark(16, 16, 16, folder_path);
-    run_amgx_benchmark(24, 24, 24, folder_path);
-    run_amgx_benchmark(32, 32, 32, folder_path);
-    run_amgx_benchmark(64, 64, 64, folder_path);
-    run_amgx_benchmark(128, 64, 64, folder_path);
-    run_amgx_benchmark(128, 128, 64, folder_path);
-    std::cout << "did 64" << std::endl;
-    run_amgx_benchmark(128, 128, 128, folder_path);
-    run_amgx_benchmark(256, 128, 128, folder_path);
+    // run_amgx_benchmark(16, 16, 16, folder_path);
+    // run_amgx_benchmark(24, 24, 24, folder_path);
+    // run_amgx_benchmark(32, 32, 32, folder_path);
+    // run_amgx_benchmark(64, 64, 64, folder_path);
+    // run_amgx_benchmark(128, 64, 64, folder_path);
+    // run_amgx_benchmark(128, 128, 64, folder_path);
+    // run_amgx_benchmark(128, 128, 128, folder_path);
+    // run_amgx_benchmark(256, 128, 128, folder_path);
 
     std::cout << "Benchmark Finished" << std::endl;
 

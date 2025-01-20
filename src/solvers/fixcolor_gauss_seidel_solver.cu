@@ -548,6 +548,7 @@ void FixcolorGaussSeidelSolver<TemplateConfig<AMGX_host, t_vecPrec, t_matPrec, t
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void FixcolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::computeDinv_4x4(const Matrix_d &A)
 {
+    
 //both DIAG supported
     this->Dinv.resize(A.get_num_rows()*A.get_block_dimx()*A.get_block_dimy(), 0.0);
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
@@ -715,6 +716,9 @@ void FixcolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec,
     int n = A.get_num_rows();
     int num_rows_per_line;
     num_rows_per_line = (int) ceil(cbrt((double)n) / 2);
+        // J
+
+    // printf("smooth_1x1\n");
 
     for (int i = 0; i < this->num_colors; i++)
     {

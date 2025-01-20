@@ -786,7 +786,9 @@ Greedy_Recolor_MatrixColoring_Base<T_Config>::Greedy_Recolor_MatrixColoring_Base
 template< AMGX_VecPrecision V, AMGX_MatPrecision M, AMGX_IndPrecision I >
 void
 Greedy_Recolor_MatrixColoring<TemplateConfig<AMGX_device, V, M, I> >::colorMatrix( Matrix_d &A )
-{
+{   
+    // J
+    // printf("colorMatrix. This I believe is the method where the coloring is done\n");
     const int num_rows = A.get_num_rows();
     const int num_nz   = A.get_num_nz();
     int avg_nz   = num_nz / num_rows;

@@ -17,6 +17,7 @@ template<class T_Config>
 GaussSeidelSolver_Base<T_Config>::GaussSeidelSolver_Base( AMG_Config &cfg, const std::string &cfg_scope) : Solver<T_Config>( cfg, cfg_scope)
 {
     this->weight = cfg.AMG_Config::template getParameter<double>("relaxation_factor", cfg_scope);
+    // printf("GaussSeidelSolver_Base::GaussSeidelSolver_Base is used\n");
 
     if (this->weight == 0)
     {
@@ -42,6 +43,7 @@ template<class T_Config>
 void
 GaussSeidelSolver_Base<T_Config>::solver_setup(bool reuse_matrix_structure)
 {
+    // printf("GS SolverBase Setup is done\n");
     Matrix<T_Config> *A_as_matrix = dynamic_cast<Matrix<T_Config>*>(this->m_A);
 
     if (!A_as_matrix)
@@ -79,7 +81,8 @@ GaussSeidelSolver_Base<T_Config>::solve_init( VVector &b, VVector &x, bool xIsZe
 template<class T_Config>
 AMGX_STATUS
 GaussSeidelSolver_Base<T_Config>::solve_iteration( VVector &b, VVector &x, bool xIsZero )
-{
+{   
+    // printf("GaussSeidelSolver_Base::solve_iteration is used\n");
     Matrix<T_Config> *A_as_matrix = (Matrix<T_Config> *) this->m_A;
 
     if ( A_as_matrix->get_block_size() == 1)
@@ -165,6 +168,7 @@ void GaussSeidelSolver<TemplateConfig<AMGX_host, t_vecPrec, t_matPrec, t_indPrec
 
         x[i] = x[i] + this->weight * (b[i] - Axi) / diag;
     }
+    // printf("GaussSeidelSolver::smooth_1x1 is the secret sauce\n");
 }
 
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
@@ -176,6 +180,8 @@ void GaussSeidelSolver<TemplateConfig<AMGX_host, t_vecPrec, t_matPrec, t_indPrec
         ValueTypeA diag = isNotCloseToZero(this->diag[i]) ? this->diag[i] : epsilon(this->diag[i]);
         x[i] = this->weight * b[i] / diag;
     }
+
+    // printf("GaussSeidelSolver::smooth_with_0_initial_guess_1x1 is the secret sauce\n");
 }
 
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
@@ -206,6 +212,8 @@ __global__ void GS_smooth_kernel(const IndexType num_rows,
                                  ValueTypeB *x)
 
 {
+
+    // printf("GS Smooth Kernel is the secret sauce now\n");
     IndexType tidx = blockDim.x * blockIdx.x + threadIdx.x;
 
     for (int ridx = tidx; ridx < num_rows; ridx += blockDim.x * gridDim.x)
@@ -229,7 +237,8 @@ __global__ void GS_smooth_kernel(const IndexType num_rows,
 
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void GaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::smooth_1x1(const Matrix_d &A, const VVector &b, VVector &x)
-{
+{   
+    // printf("GS Smooth 1x1 is used to call a kernel\n");
     typedef typename Matrix_d::index_type IndexType;
     typedef typename Matrix_d::value_type ValueTypeA;
     typedef typename VVector::value_type ValueTypeB;
@@ -249,7 +258,8 @@ void GaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPr
 
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void GaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::smooth_with_0_initial_guess_1x1(const Matrix_d &A, const VVector &b, VVector &x)
-{
+{   
+    // printf("GS Smooth with 0 initial guess 1x1 is used to call a kernel\n");
     thrust_wrapper::fill<AMGX_device>(x.begin(), x.end(), ValueTypeB(0));
     cudaCheckError();
     smooth_1x1(A, b, x);

@@ -767,6 +767,8 @@ MatrixBase<T_Config>::setupMatrix(Solver<T_Config> *outer_solver, AMG_Config &cf
     }
 
     bool is_coloring_needed  = outer_solver->isColoringNeeded();
+        // J
+    // printf("Coloring needed: %d\n", is_coloring_needed);
 
     if (!reuse_matrix_structure)
     {
@@ -774,6 +776,8 @@ MatrixBase<T_Config>::setupMatrix(Solver<T_Config> *outer_solver, AMG_Config &cf
         if ( is_coloring_needed )
         {
             // Get the scope of the solver that needs coloring
+        // J
+            // printf("so I think we do the coloring in this setup thingy\n");
             std::string cfg_scope_for_coloring;
             outer_solver->getColoringScope(cfg_scope_for_coloring);
             this->colorMatrix(cfg, cfg_scope_for_coloring);

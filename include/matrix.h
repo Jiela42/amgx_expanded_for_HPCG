@@ -750,6 +750,8 @@ class MatrixBase : public AuxData, public Operator<T_Config>
         inline void setMatrixColoring(MatrixColoring<T_Config> *m_coloring)
         {
             this->set_initialized(0);
+        // J
+            // printf("We set the coloring\n");
 
             if (m_matrix_coloring != NULL && m_matrix_coloring->release())
             {
@@ -1038,6 +1040,8 @@ class Matrix< TemplateConfig<AMGX_host, t_vecPrec, t_matPrec, t_indPrec> > : pub
             }
 
             this->m_matrix_coloring = MatrixColoringFactory<TConfig>::allocate(cfg, cfg_scope);
+        // J
+            // printf("coloring instanciation in the matrix.h file \n");
 
             if (this->hasParameter("coloring") && this->template getParameter<int>("coloring_size") == this->get_num_rows())
             {
@@ -1059,6 +1063,14 @@ class Matrix< TemplateConfig<AMGX_host, t_vecPrec, t_matPrec, t_indPrec> > : pub
                 thrust_wrapper::sequence<AMGX_host>(this->m_seq_offsets.begin(), this->m_seq_offsets.end());
                 cudaCheckError();
             }
+
+        // J
+            // printf("We color the matrix\n");
+            // printf("Here is the row_colors\n");
+            // for(int i = 0; i < this->get_num_rows(); i++)
+            // {
+            //     printf("%d ", this->m_matrix_coloring->getRowColors()[i]);
+            // }
 
             this->addProps(COLORING);
         }
@@ -1193,6 +1205,8 @@ class Matrix< TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> > : p
 
         void colorMatrix(AMG_Config &cfg, const std::string &cfg_scope)
         {
+        // J
+            // printf("other coloring method in matrix.h\n");
             //locally downwind needs the aggregates to perform the coloring
             std::string coloring_algorithm = cfg.AMG_Config::template getParameter<std::string>("matrix_coloring_scheme", cfg_scope );
 
@@ -1229,6 +1243,22 @@ class Matrix< TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> > : p
                 thrust_wrapper::sequence<AMGX_device>(this->m_seq_offsets.begin(), this->m_seq_offsets.end());
                 cudaCheckError();
             }
+
+        // J
+            // printf("We color the matrix\n");
+            // printf("Here is the row_colors\n");
+            // const IVector &row_colors = this->m_matrix_coloring->getRowColors();
+
+            // printf("type of row_colors[0], %s\n", typeid(row_colors[0]).name());
+
+
+            // // Copy the device vector to a host vector
+            // thrust::host_vector<int> row_colors_host = row_colors;
+
+            // // Print the values from the host vector
+            // for (int i = 0; i < this->get_num_rows(); i++) {
+            //     printf("row %d: color %d \n", i, row_colors_host[i]);
+            // }
 
             this->addProps(COLORING);
         }

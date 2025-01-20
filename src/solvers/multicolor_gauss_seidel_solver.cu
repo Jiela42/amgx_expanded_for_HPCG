@@ -31,6 +31,8 @@ template<typename IndexType, typename ValueTypeA>
 __global__
 void setupBlockGSSmooth1x1(const IndexType *row_offsets, const IndexType *column_indices, const ValueTypeA *values, const IndexType *dia_indices, ValueTypeA *Dinv, const int num_rows)
 {
+    // J
+    // printf("setupBlockGSSmooth1x1 kernel\n");
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
 
     while (tid < num_rows)
@@ -154,6 +156,9 @@ __global__
 void setupBlockGSSmoothBlockDiaCsrKernel_V2(const IndexType *row_offsets, const IndexType *column_indices, const ValueTypeA *values, const IndexType *dia_indices,
         ValueTypeA *Dinv, const int num_block_rows)
 {
+
+        // J
+    // printf("setupBlockGSSmoothBlockDiaCsrKernel_V2 kernel\n");
     int cta_blockrow_id = threadIdx.x / bsize_sq;
     int blockrow_id = blockIdx.x * blockrows_per_cta + cta_blockrow_id;
     const int mat_entry_index = threadIdx.x - cta_blockrow_id * bsize_sq;
@@ -514,13 +519,32 @@ void multicolorGSSmoothCsrKernel_nPerRow(const IndexType *row_offsets, const Ind
     ValueTypeA dia;
     IndexType jcol;
     int jit, jmax;
+        // J
+
+    // int nx = 8;
+    // int ny = 8;
+    // int nz = 8;
+
+    // int diagonal_rows[8];
+    // for (int i = 0; i < 8; i++)
+    // {
+    //     diagonal_rows[i] = i * nx * i + ny * nx * i;
+    // }
+
+    
 
     while (row_id < num_rows_per_color)
     {
         i = sorted_rows_by_color[row_id];
         bmAx = amgx::types::util<ValueTypeB>::get_zero();
         jit  = row_offsets[i];
-        jmax = row_offsets[i + 1];     
+        jmax = row_offsets[i + 1];
+
+        // for (int diag_elem = 0; diag_elem < nx; diag_elem++){
+        //     if (row_id == diagonal_rows[diag_elem]){
+        //         printf("for nx = %d, ny = %d, nz = %d the %d-th diagonal element is now being processed\n", nx, ny, nz, diag_elem);
+        //     }
+        // }     
 
         for (jit = jit + me_in_row; jit < jmax; jit += n_per_row)
         {
@@ -602,7 +626,9 @@ void multicolorGSSmoothCsrKernel_NAIVE_tex_batched(const IndexType *row_offsets,
 // Constructor
 template<class T_Config>
 MulticolorGaussSeidelSolver_Base<T_Config>::MulticolorGaussSeidelSolver_Base( AMG_Config &cfg, const std::string &cfg_scope) : Solver<T_Config>( cfg, cfg_scope)
-{
+{   
+    // J
+    // printf("MulticolorGaussSeidelSolver_Base constructor\n");
     this->weight = cfg.AMG_Config::template getParameter<double>("relaxation_factor", cfg_scope);
     this->symFlag = cfg.AMG_Config::template getParameter<int>("symmetric_GS", cfg_scope);
     this->m_reorder_cols_by_color_desired = (cfg.AMG_Config::template getParameter<int>("reorder_cols_by_color", cfg_scope) != 0);
@@ -641,6 +667,8 @@ MulticolorGaussSeidelSolver_Base<T_Config>::~MulticolorGaussSeidelSolver_Base()
 template<class T_Config>
 void MulticolorGaussSeidelSolver_Base<T_Config>::computeDinv(Matrix<T_Config> &A)
 {
+    // J
+    // printf("computeDinv\n");
     ViewType oldView = A.currentView();
     A.setViewExterior();
 
@@ -716,6 +744,8 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_host, t_vecPrec, t_matPrec,
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::computeDinv_4x4(const Matrix_d &A)
 {
+    // J
+    // printf("computeDinv_4x4\n");
 //both DIAG supported
     this->Dinv.resize(A.get_num_cols()*A.get_block_dimx()*A.get_block_dimy(), 0.0);
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
@@ -736,6 +766,8 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::computeDinv_bxb(const Matrix_d &A, const int bsize)
 {
+    // J
+    // printf("computeDinv_bxb\n");
 //both DIAG supported
     //TODO: check correctness with blocksizes > 5
     this->Dinv.resize(A.get_num_cols()*A.get_block_dimx()*A.get_block_dimy(), 0.0);
@@ -762,6 +794,8 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::computeDinv_3x3(const Matrix_d &A)
 {
+    // J
+    // printf("computeDinv_3x3\n");
 //both DIAG supported
     this->Dinv.resize(A.get_num_cols()*A.get_block_dimx()*A.get_block_dimy(), 0.0);
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
@@ -786,6 +820,8 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::computeDinv_2x2(const Matrix_d &A)
 {
+    // J
+    // printf("computeDinv_2x2\n");
 //both DIAG supported
     this->Dinv.resize(A.get_num_cols()*A.get_block_dimx()*A.get_block_dimy(), 0.0);
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
@@ -810,6 +846,8 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::computeDinv_5x5(const Matrix_d &A)
 {
+    // J
+    // printf("computeDinv_5x5\n");
 //both DIAG supported
     this->Dinv.resize(A.get_num_cols()*A.get_block_dimx()*A.get_block_dimy(), 0.0);
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
@@ -834,6 +872,8 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::computeDinv_1x1(const Matrix_d &A)
 {
+    // J
+    // printf("computeDinv_1x1\n");
     if (this->use_bsrxmv && A.get_block_dimx() == A.get_block_dimy())
     {
         this->Dinv.resize(A.get_num_cols()*A.get_block_dimx()*A.get_block_dimy(), 0.0);
@@ -858,7 +898,9 @@ MulticolorGaussSeidelSolver_Base<T_Config>::printSolverParameters() const
 template<class T_Config>
 void
 MulticolorGaussSeidelSolver_Base<T_Config>::solver_setup(bool reuse_matrix_structure)
-{
+    // J
+{   
+    // printf("MulticolorGaussSeidelSolver_Base solver_setup\n");
     this->m_explicit_A = dynamic_cast<Matrix<T_Config>*>(this->m_A);
 
     if (!this->m_explicit_A)
@@ -919,6 +961,8 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_host, t_vecPrec, t_matPrec,
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::smooth_1x1_naive(const Matrix_d &A, const VVector &b, VVector &x, ViewType separation_flag)
 {
+    // J
+    // printf("smooth_1x1_naive\n");
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
     const IndexType *A_column_indices_ptr = A.col_indices.raw();
     const ValueTypeA *A_nonzero_values_ptr = A.values.raw();
@@ -971,6 +1015,8 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::smooth_1x1(const Matrix_d &A, const VVector &b, VVector &x, ViewType separation_flag)
 {
+    // J
+    // printf("smooth_1x1\n");
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
     const IndexType *A_column_indices_ptr = A.col_indices.raw();
     const ValueTypeA *A_nonzero_values_ptr = A.values.raw();
@@ -980,6 +1026,7 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
     const ValueTypeA *Dinv_ptr = this->Dinv.raw();
     ValueTypeB *x_ptr = x.raw();
     const int num_colors = this->m_explicit_A->getMatrixColoring().getNumColors();
+    // printf("num_colors = %d\n", num_colors);
 
     cudaStream_t stream = 0; // Stream where previous work is done. Currently - default stream
     cudaStream_t work_stream = stream;
@@ -1032,9 +1079,12 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 #endif
 
     for (int i = 0; i < num_colors; i++)
-    {
+    {   
         const IndexType color_offset = ((separation_flag & INTERIOR) == 0) ? A.getMatrixColoring().getSeparationOffsetsRowsPerColor()[i] : A.getMatrixColoring().getOffsetsRowsPerColor()[i];
         const IndexType num_rows_per_color = ((separation_flag == this->m_explicit_A->getViewInterior()) ? A.getMatrixColoring().getSeparationOffsetsRowsPerColor()[i] : A.getMatrixColoring().getOffsetsRowsPerColor()[i + 1]) - color_offset;
+
+        // J
+        // std::cout << "color " << i << " has " << num_rows_per_color << " rows" << std::endl;
 
         if (num_rows_per_color == 0) { continue; }
 
@@ -1145,6 +1195,7 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::batch_smooth_1x1(const Matrix_d &A, int batch_sz, const VVector &b, VVector &x)
 {
+    printf("batch_smooth_1x1\n");
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
     const IndexType *A_column_indices_ptr = A.col_indices.raw();
     const ValueTypeA *A_nonzero_values_ptr = A.values.raw();
@@ -1201,6 +1252,7 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::batch_smooth_1x1_fast(const Matrix_d &A, int batch_sz, const VVector &b, VVector &x)
 {
+    printf("batch_smooth_1x1_fast\n");
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
     const IndexType *A_column_indices_ptr = A.col_indices.raw();
     const ValueTypeA *A_nonzero_values_ptr = A.values.raw();
@@ -1253,6 +1305,7 @@ void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPre
 template <AMGX_VecPrecision t_vecPrec, AMGX_MatPrecision t_matPrec, AMGX_IndPrecision t_indPrec>
 void MulticolorGaussSeidelSolver<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> >::smooth_4x4(const Matrix_d &A, const VVector &b, VVector &x, ViewType separation_flag)
 {
+    
     const IndexType *A_row_offsets_ptr = A.row_offsets.raw();
     const IndexType *A_column_indices_ptr = A.col_indices.raw();
     const IndexType *A_dia_idx_ptr = A.diag.raw();
@@ -1411,6 +1464,9 @@ template<class T_Config>
 AMGX_STATUS
 MulticolorGaussSeidelSolver_Base<T_Config>::solve_iteration( VVector &b, VVector &x, bool xIsZero )
 {
+    // J
+    // printf("solve_iteration\n");
+
     if (xIsZero) { x.dirtybit = 0; }
 
     if (!this->m_explicit_A->is_matrix_singleGPU())
@@ -1458,6 +1514,8 @@ MulticolorGaussSeidelSolver_Base<T_Config>::solve_iteration( VVector &b, VVector
         }
         else
         {
+        // J
+            // printf("else case smooth_1x1\n");
             smooth_1x1(*this->m_explicit_A, b, x, flags);
         }
     }

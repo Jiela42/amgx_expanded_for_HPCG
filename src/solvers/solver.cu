@@ -321,6 +321,8 @@ template<class TConfig>
 void Solver<TConfig>::setup( Operator<TConfig> &A, bool reuse_matrix_structure)
 {
     AMGX_CPU_PROFILER("Solver::setup ");
+    // J
+    // std::cout << "Solver::setup" << std::endl;
 
     if (m_verbose)
     {
@@ -372,6 +374,8 @@ void Solver<TConfig>::setup( Operator<TConfig> &A, bool reuse_matrix_structure)
 
     if (B_ptr)
     {
+    // J
+        // printf("We are in B_ptr\n");
         Matrix<TConfig> &B = *B_ptr;
 
         if (!B.is_initialized())
@@ -398,8 +402,12 @@ void Solver<TConfig>::setup( Operator<TConfig> &A, bool reuse_matrix_structure)
 #endif
 
         // Color the matrix, set the block format, reorder columns if necessary
+        // J
+        // printf("here is the else if condition %d %d\n", this->isColoringNeeded(), !B.hasProps(COLORING));
         if (!B.is_matrix_setup())
         {
+    // J
+            // printf("Do we do this? and is the coloring maybe included?\n");
             B.setupMatrix(this, *m_cfg, reuse_matrix_structure);
         }
         // The matrix has been created without coloring. Color it!!!
@@ -407,6 +415,7 @@ void Solver<TConfig>::setup( Operator<TConfig> &A, bool reuse_matrix_structure)
         // a better execution model, we can remove that hack.
         else if (this->isColoringNeeded() && !B.hasProps(COLORING))
         {
+            // printf("I believe, this is where we color the matrix\n");
             std::string cfg_scope_for_coloring;
             this->getColoringScope(cfg_scope_for_coloring);
             B.set_initialized(0);
@@ -784,6 +793,8 @@ AMGX_STATUS Solver<TConfig>::solve(Vector<TConfig> &b, Vector<TConfig> &x,
     for (m_curr_iter = 0; m_curr_iter < m_max_iters && !done; ++m_curr_iter)
     {
         // Run one iteration. Compute residual and its norm and decide convergence
+        // J
+        // printf("We now run solve iteration\n");
         conv_stat = solve_iteration(b, x, xIsZero);
         // Make sure x is not zero anymore.
         xIsZero = false;
