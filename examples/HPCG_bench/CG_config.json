@@ -1,0 +1,33 @@
+{
+    "config_version": 2,
+            "determinism_flag": 1,
+            "exception_handling" : 1,
+            "print_coloring_info": 1,
+            "solver": {
+                "monitor_residual": 1,
+                "convergence_analysis": 1,
+                "solver": "PCG",
+                "solver_verbose":1,
+                "relaxation_factor": 1,
+                "obtain_timings": 1,
+                "convergence": "RELATIVE_INI",
+                "tolerance": 1e-12,
+                "norm": "L2",
+                "max_iters": 50,
+                "preconditioner": {
+                    "solver": "AMG",
+                    "algorithm": "CLASSICAL",
+                    "smoother": {
+                        "solver": "MULTICOLOR_GS",
+                        "symmetric_GS": 1, 
+                        "max_iters": 1
+                    },
+                    "relaxation_factor": 1,
+                    "presweeps": 1,
+                    "postsweeps": 1,
+                    "max_levels": 3,
+                    "scope": "amg"
+                    
+            }
+        }
+    }

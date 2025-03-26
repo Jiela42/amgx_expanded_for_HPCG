@@ -1,0 +1,14 @@
+{
+"config_version": 2,
+            "determinism_flag": 1,
+            "exception_handling" : 1,
+            "print_coloring_info": 1,
+            "solver": {
+                "solver": "MULTICOLOR_GS",
+                "symmetric_GS": 1, 
+                "relaxation_factor": 1,
+                "preconditioner": {
+                    "solver": "NOSOLVER"
+            }
+        }
+    }
