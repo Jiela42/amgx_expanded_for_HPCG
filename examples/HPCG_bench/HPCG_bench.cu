@@ -43,13 +43,13 @@ void print_callback(const char *msg, int length)
 
 // Here are some MACROS I defined
 #define NUM_ITERATIONS 10
-#define DO_TESTS 1
+#define DO_TESTS 0
 #define AULT_NODE "GH200"
 #define MATRIX_TYPE "3d_27pt"
 #define VERSION_NAME "AMGX"
 #define ADDITIONAL_PARAMETERS ""
 #define BENCH_SPMV 1
-#define BENCH_SYMGS 1
+#define BENCH_SYMGS 0
 #define BENCH_CG 1
 #define RANDOM_SEED 42
 
@@ -282,7 +282,7 @@ std::string write_Problem_to_file(
 
     // create an mtx file
     std::string dims = std::to_string(nx) + "x" + std::to_string(ny) + "x" + std::to_string(nz);
-    std::string filename = "../../examples/HPCG_bench/problem_" + dims + ".mtx";
+    std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/problem_" + dims + ".mtx";
 
     // check if the file already exists
     std::ifstream infile(filename);
@@ -375,7 +375,7 @@ std::string write_spmv_problem_to_file(int nx, int ny, int nz){
   
       // create an mtx file
       std::string dims = std::to_string(nx) + "x" + std::to_string(ny) + "x" + std::to_string(nz);
-      std::string filename = "../../examples/HPCG_bench/spmv_problem_" + dims + ".mtx";
+      std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/spmv_problem_" + dims + ".mtx";
   
       // check if the file already exists
       std::ifstream infile(filename);
@@ -421,9 +421,9 @@ std::string write_spmv_problem_to_file(int nx, int ny, int nz){
               }
           }
 
-          if(i < 10){
-              printf("Row %d sum: %f\n", i, row_sum);
-          }
+        //   if(i < 10){
+        //       printf("Row %d sum: %f\n", i, row_sum);
+        //   }
       }
       
       srand(RANDOM_SEED);
@@ -522,9 +522,9 @@ void bench_spmv1(
             {
                 y_res_ref += values[c]*a_amgx[col_idx[c]];
             }
-            if(r == 0){
-                printf("Reference: %f, AMGX: %f\n", y_res_ref, y_res_h[r]);
-            }
+            // if(r == 0){
+            //     printf("Reference: %f, AMGX: %f\n", y_res_ref, y_res_h[r]);
+            // }
 
             if (std::abs(y_res_ref - y_res_h[r]) > 1e-8)
             {
@@ -660,6 +660,8 @@ void bench_spmv(
             AMGX_vector_set_zero(x, n, bsize_x);
         }
 
+        // AMGX_vector_set_random(b, n);
+
         timer.startTimer();
 
         AMGX_matrix_vector_multiply(A, b, x);
@@ -670,9 +672,9 @@ void bench_spmv(
         AMGX_vector_download(x, x_h.data());
 
         // print the first 10 values
-        for(int i = 0; i < 10; i++){
-            printf("from spmv: x[%d]: %f\n", i, x_h[i]);
-        }
+        // for(int i = 0; i < 10; i++){
+        //     printf("from spmv: x[%d]: %f\n", i, x_h[i]);
+        // }
 
         // AMGX_solver_destroy(solver);
         AMGX_vector_destroy(x);
@@ -765,9 +767,9 @@ void bench_symGS(
         AMGX_vector_download(x, x_h.data());
 
         // print the first 10 values
-        for(int i = 0; i < 10; i++){
-            printf("x[%d]: %f\n", i, x_h[i]);
-        }
+        // for(int i = 0; i < 10; i++){
+        //     printf("x[%d]: %f\n", i, x_h[i]);
+        // }
 
         AMGX_solver_destroy(solver);
         AMGX_vector_destroy(x);
@@ -869,20 +871,35 @@ void bench_CG(
 void run_amgx_benchmark(int nx, int ny, int nz, std::string folder_path){
 
     // generate problem
-    std::tuple<std::vector<int>, std::vector<int>, std::vector<double>, std::vector<double>> problem = generate_HPCG_problem(nx, ny, nz);
+    // std::tuple<std::vector<int>, std::vector<int>, std::vector<double>, std::vector<double>> problem = generate_HPCG_problem(nx, ny, nz);
 
-    std::vector<int>& row_ptr = std::get<0>(problem);
-    std::vector<int>& col_idx = std::get<1>(problem);
-    std::vector<double>& values = std::get<2>(problem);
-    std::vector<double>& y = std::get<3>(problem);
-    std::vector<double> x (nx * ny * nz, 0.0);
-    std::vector<double> a = random_vector(RANDOM_SEED, nx * ny * nz);
+    // std::vector<int>& row_ptr = std::get<0>(problem);
+    // std::vector<int>& col_idx = std::get<1>(problem);
+    // std::vector<double>& values = std::get<2>(problem);
+    // std::vector<double>& y = std::get<3>(problem);
+    // std::vector<double> x (nx * ny * nz, 0.0);
+    // std::vector<double> a = random_vector(RANDOM_SEED, nx * ny * nz);
 
     // write the problem to a file
     std::string file_name = write_Problem_to_file(nx, ny, nz);
     std::string spmv_file_name = write_spmv_problem_to_file(nx, ny, nz);
 
-    int nnz = values.size();
+    int num_rows = nx * ny * nz;
+    int num_cols = nx * ny * nz;
+
+    int num_interior_points = (nx - 2) * (ny - 2) * (nz - 2);
+    int num_face_points = 2 * ((nx - 2) * (ny - 2) + (nx - 2) * (nz - 2) + (ny - 2) * (nz - 2));
+    int num_edge_points = 4 * ((nx - 2) + (ny - 2) + (nz - 2));
+    int num_corner_points = 8;
+
+    int nnz_interior = 27 * num_interior_points;
+    int nnz_face = 18 * num_face_points;
+    int nnz_edge = 12 * num_edge_points;
+    int nnz_corner = 8 * num_corner_points;
+
+    int nnz = nnz_interior + nnz_face + nnz_edge + nnz_corner;
+
+    // int nnz = values.size();
 
     // now we gotta greb the timer
     CudaTimer* timer = new CudaTimer(nx, ny, nz, nnz, AULT_NODE, MATRIX_TYPE, VERSION_NAME, ADDITIONAL_PARAMETERS, folder_path);
@@ -917,6 +934,24 @@ void run_amgx_benchmark(int nx, int ny, int nz, std::string folder_path){
     delete timer;
 }
 
+
+void run_sizeTest(std::string folder_path){
+    // run the size test for different sizes
+    for(int i = 6; i < 9; i++){
+        // int nx = i * 8;
+        // int ny = i * 8;
+        // int nz = i * 8;
+
+        int nx = 1 << i;
+        int ny = 1 << i;
+        int nz = 1 << i;
+
+        assert (nx * ny * nz >=0);
+        std::cout << "Running size test for: " << nx << "x" << ny << "x" << nz << std::endl;
+        run_amgx_benchmark(nx, ny, nz, folder_path);
+    }
+}
+
 int main(int argc, char* argv[])
 {
     // Initialization
@@ -925,22 +960,26 @@ int main(int argc, char* argv[])
     registerParametersforSpMV();
 
     // generate a timestamped folder
-    std::string base_path = "../../../HighPerformanceHPCG_Thesis/timing_results/";
-    base_path = "../../../HighPerformanceHPCG_Thesis/dummy_timing_results/";
+    std::string base_path = "/users/dknecht/amgx_expanded_for_HPCG/examples/HPCG_bench/timing_results/";
+    // std::string base_path = "../../../HighPerformanceHPCG_Thesis/timing_results/";
+    // base_path = "../../../HighPerformanceHPCG_Thesis/dummy_timing_results/";
 
     std::string folder_path = createTimestampedFolder(base_path);
     folder_path += "/";
 
     std::cout << "Starting Benchmark" << std::endl;
-    run_amgx_benchmark(8, 8, 8, folder_path);
+    // run_amgx_benchmark(8, 8, 8, folder_path);
     // run_amgx_benchmark(16, 16, 16, folder_path);
     // run_amgx_benchmark(24, 24, 24, folder_path);
-    // run_amgx_benchmark(32, 32, 32, folder_path);
-    // run_amgx_benchmark(64, 64, 64, folder_path);
+    run_amgx_benchmark(32, 32, 32, folder_path);
+    run_amgx_benchmark(64, 64, 64, folder_path);
     // run_amgx_benchmark(128, 64, 64, folder_path);
     // run_amgx_benchmark(128, 128, 64, folder_path);
-    // run_amgx_benchmark(128, 128, 128, folder_path);
+    run_amgx_benchmark(128, 128, 128, folder_path);
+    // run_amgx_benchmark(256,256,256, folder_path);
     // run_amgx_benchmark(256, 128, 128, folder_path);
+
+    // run_sizeTest(folder_path);
 
     std::cout << "Benchmark Finished" << std::endl;
 
