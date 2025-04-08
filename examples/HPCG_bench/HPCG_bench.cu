@@ -5,6 +5,32 @@
 #include "stdio.h"
 #include "multiply.h"
 #include "thrust/fill.h"
+#include "amgx_c.h"
+
+// I just copy stuff from amgx_capi.c to be able to run the solver code with my own configs ;)
+/* CUDA error macro */
+#define CUDA_SAFE_CALL(call) do {                                 \
+    cudaError_t err = call;                                         \
+    if(cudaSuccess != err) {                                        \
+      fprintf(stderr, "Cuda error in file '%s' in line %i : %s.\n", \
+              __FILE__, __LINE__, cudaGetErrorString( err) );       \
+      exit(EXIT_FAILURE);                                           \
+    } } while (0)
+
+/* print error message and exit */
+void errAndExit(const char *err)
+{
+    printf("%s\n", err);
+    fflush(stdout);
+    exit(1);
+}
+
+/* print callback (could be customized) */
+void print_callback(const char *msg, int length)
+{
+    printf("%s", msg);
+}
+
 
 // here are my imports
 #include <vector>
@@ -17,13 +43,14 @@
 
 // Here are some MACROS I defined
 #define NUM_ITERATIONS 10
-#define DO_TESTS 1
-#define AULT_NODE "41-44"
+#define DO_TESTS 0
+#define AULT_NODE "GH200"
 #define MATRIX_TYPE "3d_27pt"
 #define VERSION_NAME "AMGX"
 #define ADDITIONAL_PARAMETERS ""
-#define BENCH_SPMV 0
-#define BENCH_SYMGS 1
+#define BENCH_SPMV 1
+#define BENCH_SYMGS 0
+#define BENCH_CG 1
 #define RANDOM_SEED 42
 
 // First we have all the generations we might need
@@ -108,6 +135,8 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>, std::vector<
     return std::make_tuple(row_ptr, col_idx, values, y);
 }
 
+
+
 // copy the timer.cpp from the HighPerformanceHPCG_Thesis repo
 class CudaTimer {
 public:
@@ -178,10 +207,6 @@ void CudaTimer::stopTimer(std::string method_name) {
     }
 }
 
-float CudaTimer::getElapsedTime() const {
-    return milliseconds;
-}
-
 void CudaTimer::writeCSV(std::string filepath, std::string file_header, std::vector<float> times){
     // if the vector is empty we don't need to write anything
     if (times.empty()) return;
@@ -233,6 +258,187 @@ void CudaTimer::writeResultsToCsv() {
 }
 
 
+std::string write_Problem_to_file(
+    int nx,
+    int ny,
+    int nz
+){
+
+    // get meta data
+    int num_rows = nx * ny * nz;
+    int num_cols = nx * ny * nz;
+
+    int num_interior_points = (nx - 2) * (ny - 2) * (nz - 2);
+    int num_face_points = 2 * ((nx - 2) * (ny - 2) + (nx - 2) * (nz - 2) + (ny - 2) * (nz - 2));
+    int num_edge_points = 4 * ((nx - 2) + (ny - 2) + (nz - 2));
+    int num_corner_points = 8;
+
+    int nnz_interior = 27 * num_interior_points;
+    int nnz_face = 18 * num_face_points;
+    int nnz_edge = 12 * num_edge_points;
+    int nnz_corner = 8 * num_corner_points;
+
+    int nnz = nnz_interior + nnz_face + nnz_edge + nnz_corner;
+
+    // create an mtx file
+    std::string dims = std::to_string(nx) + "x" + std::to_string(ny) + "x" + std::to_string(nz);
+    std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/problem_" + dims + ".mtx";
+
+    // check if the file already exists
+    std::ifstream infile(filename);
+    if (infile.good()){
+        std::cerr << "File already exists: " << filename << std::endl;
+        return filename;
+    }
+
+    std::ofstream file(filename);
+    file << "%%MatrixMarket matrix coordinate real general" << std::endl;
+    file << "%%AMGX rhs" << std::endl;
+    file << num_rows << " " << num_cols << " " << nnz << std::endl;
+
+    // write the matix using one based indexing (as required by the mtx format)
+    for(int i = 0; i < num_rows; i++){
+        int row = i + 1;
+
+        int ix = i % nx;
+        int iy = (i / nx) % ny;
+        int iz = i / (nx * ny);
+
+        // iterate over the columns
+        for (int sz = -1; sz < 2; sz++){
+            if(iz + sz > -1 && iz + sz < nz){
+                for(int sy = -1; sy < 2; sy++){
+                    if(iy + sy > -1 && iy + sy < ny){
+                        for(int sx = -1; sx < 2; sx++){
+                            if(ix + sx > -1 && ix + sx < nx){
+                                int j = ix + sx + nx * (iy + sy) + nx * ny * (iz + sz);
+                                int col = j + 1;
+                                if(i == j){
+                                    file << row << " " << col << " " << 26.0 << std::endl;
+                                } else {
+                                    file << row << " " << col << " " << -1.0 << std::endl;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // write the rhs (also with one based indexing)
+    for(int i = 0 ; i < num_rows; i++){
+        int nnz_i = 0;
+        int ix = i % nx;
+        int iy = (i / nx) % ny;
+        int iz = i / (nx * ny);
+        // iterate over the columns to grab the nnz_i
+        for (int sz = -1; sz < 2; sz++){
+            if(iz + sz > -1 && iz + sz < nz){
+                for(int sy = -1; sy < 2; sy++){
+                    if(iy + sy > -1 && iy + sy < ny){
+                        for(int sx = -1; sx < 2; sx++){
+                            if(ix + sx > -1 && ix + sx < nx){
+                                nnz_i++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        double y_value = 26.0 - nnz_i;
+        file << y_value << std::endl;
+    }
+    file.close();
+
+    std::cout << "Problem written to file: " << filename << std::endl;
+
+    return filename;
+}
+
+std::string write_spmv_problem_to_file(int nx, int ny, int nz){
+      // get meta data
+      int num_rows = nx * ny * nz;
+      int num_cols = nx * ny * nz;
+  
+      int num_interior_points = (nx - 2) * (ny - 2) * (nz - 2);
+      int num_face_points = 2 * ((nx - 2) * (ny - 2) + (nx - 2) * (nz - 2) + (ny - 2) * (nz - 2));
+      int num_edge_points = 4 * ((nx - 2) + (ny - 2) + (nz - 2));
+      int num_corner_points = 8;
+  
+      int nnz_interior = 27 * num_interior_points;
+      int nnz_face = 18 * num_face_points;
+      int nnz_edge = 12 * num_edge_points;
+      int nnz_corner = 8 * num_corner_points;
+  
+      int nnz = nnz_interior + nnz_face + nnz_edge + nnz_corner;
+  
+      // create an mtx file
+      std::string dims = std::to_string(nx) + "x" + std::to_string(ny) + "x" + std::to_string(nz);
+      std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/spmv_problem_" + dims + ".mtx";
+  
+      // check if the file already exists
+      std::ifstream infile(filename);
+    //   if (infile.good()){
+    //       std::cerr << "File already exists: " << filename << std::endl;
+    //       return filename;
+    //   }
+  
+      std::ofstream file(filename);
+      file << "%%MatrixMarket matrix coordinate real general" << std::endl;
+      file << "%%AMGX rhs" << std::endl;
+      file << num_rows << " " << num_cols << " " << nnz << std::endl;
+  
+      // write the matix using one based indexing (as required by the mtx format)
+      for(int i = 0; i < num_rows; i++){
+          int row = i + 1;
+  
+          int ix = i % nx;
+          int iy = (i / nx) % ny;
+          int iz = i / (nx * ny);
+        
+          double row_sum = 0.0;
+          // iterate over the columns
+          for (int sz = -1; sz < 2; sz++){
+              if(iz + sz > -1 && iz + sz < nz){
+                  for(int sy = -1; sy < 2; sy++){
+                      if(iy + sy > -1 && iy + sy < ny){
+                          for(int sx = -1; sx < 2; sx++){
+                              if(ix + sx > -1 && ix + sx < nx){
+                                  int j = ix + sx + nx * (iy + sy) + nx * ny * (iz + sz);
+                                  int col = j + 1;
+                                  if(i == j){
+                                      file << row << " " << col << " " << 26.0 << std::endl;
+                                      row_sum += 26.0;
+                                  } else {
+                                      file << row << " " << col << " " << -1.0 << std::endl;
+                                      row_sum += -1.0;
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+        //   if(i < 10){
+        //       printf("Row %d sum: %f\n", i, row_sum);
+        //   }
+      }
+      
+      srand(RANDOM_SEED);
+      // write a random vector (this does not need indexing)
+      for(int i = 0 ; i < num_rows; i++){
+            double v_value = (double)rand() / RAND_MAX;
+            file << v_value << std::endl;
+      }
+      file.close();
+  
+      std::cout << "Problem written to file: " << filename << std::endl;
+  
+      return filename;
+}
+
 // directory stuff for writing results
 bool create_directory(const std::string& path) {
     return mkdir(path.c_str(), 0777) == 0 || errno == EEXIST;
@@ -259,7 +465,7 @@ typedef amgx::TemplateConfig<AMGX_device, AMGX_vecDouble, AMGX_matDouble, AMGX_i
 typedef amgx::Vector<amgx::TemplateConfig<AMGX_host, AMGX_vecDouble, AMGX_matDouble, AMGX_indInt>> VVector_h; // vector type to retrieve result
 
 
-void bench_spmv(
+void bench_spmv1(
     CudaTimer& timer,
     std::vector<double>& a,
     std::vector<int>& row_ptr,
@@ -316,6 +522,10 @@ void bench_spmv(
             {
                 y_res_ref += values[c]*a_amgx[col_idx[c]];
             }
+            // if(r == 0){
+            //     printf("Reference: %f, AMGX: %f\n", y_res_ref, y_res_h[r]);
+            // }
+
             if (std::abs(y_res_ref - y_res_h[r]) > 1e-8)
             {
                 printf("SPMV Test Failing: Difference in row %d: reference: %f, AMGX: %f\n", r, y_res_ref, y_res_h[r]);
@@ -342,7 +552,7 @@ void bench_spmv(
         // zero out the result for the next iteration
         amgx::thrust::fill(zeros_amgx.begin(), zeros_amgx.end(), 0.);
     }
-}
+}  
 
 void sequential_symGS(
     std::vector<int>& A_row_ptr,
@@ -394,54 +604,302 @@ void sequential_symGS(
 }
 
 
-void bench_symGS(
+void bench_spmv(
     CudaTimer& timer,
-    std::vector<double>& x,
-    std::vector<double>& y,
-    std::vector<int>& row_ptr,
-    std::vector<int>& col_idx,
-    std::vector<double>& values
+    std::string problem_filename
     ){
 
-        int num_iterations = NUM_ITERATIONS;
+    int num_iterations = NUM_ITERATIONS;
 
-        if(DO_TESTS){
+    for(int i = 0; i < num_iterations; i++){
 
-        sequential_symGS(row_ptr, col_idx, values, x, y);
-        
         // run AMGX symGS
 
-        // compare the resulting xs
-        // VVector_h x_res_h = x_amgx;
-        // bool err_found = false;
-        // for (int i = 0; i < x.size(); i++){
-        //     if (std::abs(x_res_h[i] - x[i]) > 1e-8){
-        //         printf("SymGS Test Failing: Difference in row %d: reference: %f, AMGX: %f\n", i, x[i], x_res_h[i]);
-        //         err_found = true;
-        //     }
+        AMGX_config_handle cfg;
+        AMGX_resources_handle rsrc;
+        AMGX_matrix_handle A;
+        AMGX_vector_handle b, x;
+
+        // AMGX_SOLVE_STATUS status;
+
+        //input matrix and rhs/solution
+        int n = 0;
+        int bsize_x = 0;
+        int bsize_y = 0;
+        int sol_size = 0;
+        int sol_bsize = 0;
+
+        // use default mode
+        AMGX_Mode mode = AMGX_mode_dDDI;
+
+            /* init */
+        AMGX_SAFE_CALL(AMGX_initialize());
+        /* system */
+        AMGX_SAFE_CALL(AMGX_register_print_callback(&print_callback));
+        AMGX_SAFE_CALL(AMGX_install_signal_handler());
+        
+
+        // create the config from file
+        std::string symGS_config = "../../examples/HPCG_bench/empty_config.json";
+        AMGX_SAFE_CALL(AMGX_config_create_from_file(&cfg, symGS_config.c_str()));
+        
+        AMGX_resources_create_simple(&rsrc, cfg);
+        AMGX_matrix_create(&A, rsrc, mode);
+        AMGX_vector_create(&x, rsrc, mode);
+        AMGX_vector_create(&b, rsrc, mode);
+        // AMGX_solver_create(&solver, rsrc, mode, cfg);
+
+        AMGX_read_system(A, b, x, problem_filename.c_str());
+        
+        AMGX_matrix_get_size(A, &n, &bsize_x, &bsize_y);
+        AMGX_vector_get_size(x, &sol_size, &sol_bsize);
+
+        // this always happens, our problem does not have an initial guess
+        if (sol_size == 0 || sol_bsize == 0)
+        {
+            AMGX_vector_set_zero(x, n, bsize_x);
+        }
+
+        // AMGX_vector_set_random(b, n);
+
+        timer.startTimer();
+
+        AMGX_matrix_vector_multiply(A, b, x);
+        timer.stopTimer("compute_SPMV");
+
+        // download solutiion
+        std::vector<double> x_h(n, 0.0);
+        AMGX_vector_download(x, x_h.data());
+
+        // print the first 10 values
+        // for(int i = 0; i < 10; i++){
+        //     printf("from spmv: x[%d]: %f\n", i, x_h[i]);
         // }
 
-        // if(err_found){
-        //     printf("SymGS Test Failed\n");
-        //     num_iterations = 0;
-        // }
-
+        // AMGX_solver_destroy(solver);
+        AMGX_vector_destroy(x);
+        AMGX_vector_destroy(b);
+        AMGX_matrix_destroy(A);
+        AMGX_resources_destroy(rsrc);
+        /* destroy config (need to use AMGX_SAFE_CALL after this point) */
+        AMGX_SAFE_CALL(AMGX_config_destroy(cfg));
+        /* shutdown and exit */
+        AMGX_SAFE_CALL(AMGX_finalize());
     }
+
+}
+
+
+void bench_symGS(
+    CudaTimer& timer,
+    std::string problem_filename
+    ){
+
+    int num_iterations = NUM_ITERATIONS;
+
+    for(int i = 0; i < num_iterations; i++){
+
+        // run AMGX symGS
+
+        AMGX_config_handle cfg;
+        AMGX_resources_handle rsrc;
+        AMGX_matrix_handle A;
+        AMGX_vector_handle b, x;
+        AMGX_solver_handle solver;
+
+        AMGX_SOLVE_STATUS status;
+
+        //input matrix and rhs/solution
+        int n = 0;
+        int bsize_x = 0;
+        int bsize_y = 0;
+        int sol_size = 0;
+        int sol_bsize = 0;
+
+        // use default mode
+        AMGX_Mode mode = AMGX_mode_dDDI;
+
+            /* init */
+        AMGX_SAFE_CALL(AMGX_initialize());
+        /* system */
+        AMGX_SAFE_CALL(AMGX_register_print_callback(&print_callback));
+        AMGX_SAFE_CALL(AMGX_install_signal_handler());
+        
+
+        // create the config from file
+        std::string symGS_config = "../../examples/HPCG_bench/symGS_config.json";
+        AMGX_SAFE_CALL(AMGX_config_create_from_file(&cfg, symGS_config.c_str()));
+        
+        AMGX_resources_create_simple(&rsrc, cfg);
+        AMGX_matrix_create(&A, rsrc, mode);
+        AMGX_vector_create(&x, rsrc, mode);
+        AMGX_vector_create(&b, rsrc, mode);
+        AMGX_solver_create(&solver, rsrc, mode, cfg);
+
+        AMGX_read_system(A, b, x, problem_filename.c_str());
+        
+        AMGX_matrix_get_size(A, &n, &bsize_x, &bsize_y);
+        AMGX_vector_get_size(x, &sol_size, &sol_bsize);
+
+        // this always happens, our problem does not have an initial guess
+        if (sol_size == 0 || sol_bsize == 0)
+        {
+            AMGX_vector_set_zero(x, n, bsize_x);
+        }
+
+        // add max_iters to the config
+        int max_iters = 1;
+        AMGX_config_add_parameters(&cfg, ("config_version=2, default:max_iters=" + std::to_string(max_iters)).c_str());
+
+        timer.startTimer();
+        /* solver setup */
+        AMGX_solver_setup(solver, A);
+        /* solver solve */
+        AMGX_solver_solve(solver, b, x);
+        timer.stopTimer("compute_SymGS");
+
+        AMGX_solver_get_status(solver, &status);
+
+        printf("SymGS Solver status: %d\n", status);
+
+        // download solutiion
+        std::vector<double> x_h(n, 0.0);
+        AMGX_vector_download(x, x_h.data());
+
+        // print the first 10 values
+        // for(int i = 0; i < 10; i++){
+        //     printf("x[%d]: %f\n", i, x_h[i]);
+        // }
+
+        AMGX_solver_destroy(solver);
+        AMGX_vector_destroy(x);
+        AMGX_vector_destroy(b);
+        AMGX_matrix_destroy(A);
+        AMGX_resources_destroy(rsrc);
+        /* destroy config (need to use AMGX_SAFE_CALL after this point) */
+        AMGX_SAFE_CALL(AMGX_config_destroy(cfg));
+        /* shutdown and exit */
+        AMGX_SAFE_CALL(AMGX_finalize());
+    }
+
+}
+
+
+void bench_CG(
+    CudaTimer& timer,
+    std::string problem_filename
+    ){
+
+    int num_iterations = NUM_ITERATIONS;
+
+    for(int i = 0; i < num_iterations; i++){
+
+        // run AMGX symGS
+
+        AMGX_config_handle cfg;
+        AMGX_resources_handle rsrc;
+        AMGX_matrix_handle A;
+        AMGX_vector_handle b, x;
+        AMGX_solver_handle solver;
+
+        AMGX_SOLVE_STATUS status;
+
+        //input matrix and rhs/solution
+        int n = 0;
+        int bsize_x = 0;
+        int bsize_y = 0;
+        int sol_size = 0;
+        int sol_bsize = 0;
+
+        // use default mode
+        AMGX_Mode mode = AMGX_mode_dDDI;
+
+            /* init */
+        AMGX_SAFE_CALL(AMGX_initialize());
+        /* system */
+        AMGX_SAFE_CALL(AMGX_register_print_callback(&print_callback));
+        AMGX_SAFE_CALL(AMGX_install_signal_handler());
+        
+
+        // create the config from file
+        std::string CG_config = "../../examples/HPCG_bench/CG_config.json";
+        AMGX_SAFE_CALL(AMGX_config_create_from_file(&cfg, CG_config.c_str()));
+        
+        AMGX_resources_create_simple(&rsrc, cfg);
+        AMGX_matrix_create(&A, rsrc, mode);
+        AMGX_vector_create(&x, rsrc, mode);
+        AMGX_vector_create(&b, rsrc, mode);
+        AMGX_solver_create(&solver, rsrc, mode, cfg);
+
+        AMGX_read_system(A, b, x, problem_filename.c_str());
+        
+        AMGX_matrix_get_size(A, &n, &bsize_x, &bsize_y);
+        AMGX_vector_get_size(x, &sol_size, &sol_bsize);
+
+        // this always happens, our problem does not have an initial guess
+        if (sol_size == 0 || sol_bsize == 0)
+        {
+            AMGX_vector_set_zero(x, n, bsize_x);
+        }
+
+        timer.startTimer();
+        /* solver setup */
+        AMGX_solver_setup(solver, A);
+        /* solver solve */
+        AMGX_solver_solve(solver, b, x);
+        timer.stopTimer("compute_CG");
+        /* example of how to change parameters between non-linear iterations */
+        //AMGX_config_add_parameters(&cfg, "config_version=2, default:tolerance=1e-12");
+        //AMGX_solver_solve(solver, b, x);
+        AMGX_solver_get_status(solver, &status);
+
+        printf("CG Solver status: %d\n", status);
+
+        AMGX_solver_destroy(solver);
+        AMGX_vector_destroy(x);
+        AMGX_vector_destroy(b);
+        AMGX_matrix_destroy(A);
+        AMGX_resources_destroy(rsrc);
+        /* destroy config (need to use AMGX_SAFE_CALL after this point) */
+        AMGX_SAFE_CALL(AMGX_config_destroy(cfg));
+        /* shutdown and exit */
+        AMGX_SAFE_CALL(AMGX_finalize());
+    }
+
 }
 
 void run_amgx_benchmark(int nx, int ny, int nz, std::string folder_path){
 
     // generate problem
-    std::tuple<std::vector<int>, std::vector<int>, std::vector<double>, std::vector<double>> problem = generate_HPCG_problem(nx, ny, nz);
+    // std::tuple<std::vector<int>, std::vector<int>, std::vector<double>, std::vector<double>> problem = generate_HPCG_problem(nx, ny, nz);
 
-    std::vector<int>& row_ptr = std::get<0>(problem);
-    std::vector<int>& col_idx = std::get<1>(problem);
-    std::vector<double>& values = std::get<2>(problem);
-    std::vector<double>& y = std::get<3>(problem);
-    std::vector<double> x (nx * ny * nz, 0.0);
-    std::vector<double> a = random_vector(RANDOM_SEED, nx * ny * nz);
+    // std::vector<int>& row_ptr = std::get<0>(problem);
+    // std::vector<int>& col_idx = std::get<1>(problem);
+    // std::vector<double>& values = std::get<2>(problem);
+    // std::vector<double>& y = std::get<3>(problem);
+    // std::vector<double> x (nx * ny * nz, 0.0);
+    // std::vector<double> a = random_vector(RANDOM_SEED, nx * ny * nz);
 
-    int nnz = values.size();
+    // write the problem to a file
+    std::string file_name = write_Problem_to_file(nx, ny, nz);
+    std::string spmv_file_name = write_spmv_problem_to_file(nx, ny, nz);
+
+    int num_rows = nx * ny * nz;
+    int num_cols = nx * ny * nz;
+
+    int num_interior_points = (nx - 2) * (ny - 2) * (nz - 2);
+    int num_face_points = 2 * ((nx - 2) * (ny - 2) + (nx - 2) * (nz - 2) + (ny - 2) * (nz - 2));
+    int num_edge_points = 4 * ((nx - 2) + (ny - 2) + (nz - 2));
+    int num_corner_points = 8;
+
+    int nnz_interior = 27 * num_interior_points;
+    int nnz_face = 18 * num_face_points;
+    int nnz_edge = 12 * num_edge_points;
+    int nnz_corner = 8 * num_corner_points;
+
+    int nnz = nnz_interior + nnz_face + nnz_edge + nnz_corner;
+
+    // int nnz = values.size();
 
     // now we gotta greb the timer
     CudaTimer* timer = new CudaTimer(nx, ny, nz, nnz, AULT_NODE, MATRIX_TYPE, VERSION_NAME, ADDITIONAL_PARAMETERS, folder_path);
@@ -451,26 +909,47 @@ void run_amgx_benchmark(int nx, int ny, int nz, std::string folder_path){
     if (BENCH_SPMV){
         bench_spmv(
             *timer,
-            a,
-            row_ptr,
-            col_idx,
-            values
+            spmv_file_name
+            // a,
+            // row_ptr,
+            // col_idx,
+            // values
         );
     }
 
     if (BENCH_SYMGS){
         bench_symGS(
             *timer,
-            x,
-            y,
-            row_ptr,
-            col_idx,
-            values
+            file_name
+        );
+    }
+    if (BENCH_CG){
+        bench_CG(
+            *timer,
+            file_name
         );
     }
 
 
     delete timer;
+}
+
+
+void run_sizeTest(std::string folder_path){
+    // run the size test for different sizes
+    for(int i = 6; i < 9; i++){
+        // int nx = i * 8;
+        // int ny = i * 8;
+        // int nz = i * 8;
+
+        int nx = 1 << i;
+        int ny = 1 << i;
+        int nz = 1 << i;
+
+        assert (nx * ny * nz >=0);
+        std::cout << "Running size test for: " << nx << "x" << ny << "x" << nz << std::endl;
+        run_amgx_benchmark(nx, ny, nz, folder_path);
+    }
 }
 
 int main(int argc, char* argv[])
@@ -481,22 +960,26 @@ int main(int argc, char* argv[])
     registerParametersforSpMV();
 
     // generate a timestamped folder
-    std::string base_path = "../../HighPerformanceHPCG_Thesis/timing_results/";
-    base_path = "../../HighPerformanceHPCG_Thesis/dummy_timing_results/";
+    std::string base_path = "/users/dknecht/amgx_expanded_for_HPCG/examples/HPCG_bench/timing_results/";
+    // std::string base_path = "../../../HighPerformanceHPCG_Thesis/timing_results/";
+    // base_path = "../../../HighPerformanceHPCG_Thesis/dummy_timing_results/";
 
     std::string folder_path = createTimestampedFolder(base_path);
     folder_path += "/";
 
     std::cout << "Starting Benchmark" << std::endl;
-    run_amgx_benchmark(8, 8, 8, folder_path);
+    // run_amgx_benchmark(8, 8, 8, folder_path);
     // run_amgx_benchmark(16, 16, 16, folder_path);
     // run_amgx_benchmark(24, 24, 24, folder_path);
-    // run_amgx_benchmark(32, 32, 32, folder_path);
-    // run_amgx_benchmark(64, 64, 64, folder_path);
+    run_amgx_benchmark(32, 32, 32, folder_path);
+    run_amgx_benchmark(64, 64, 64, folder_path);
     // run_amgx_benchmark(128, 64, 64, folder_path);
     // run_amgx_benchmark(128, 128, 64, folder_path);
-    // run_amgx_benchmark(128, 128, 128, folder_path);
+    run_amgx_benchmark(128, 128, 128, folder_path);
+    // run_amgx_benchmark(256,256,256, folder_path);
     // run_amgx_benchmark(256, 128, 128, folder_path);
+
+    // run_sizeTest(folder_path);
 
     std::cout << "Benchmark Finished" << std::endl;
 
