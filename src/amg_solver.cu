@@ -17,7 +17,10 @@ namespace amgx
 
 template< class T_Config >
 void AMG_Solver<T_Config>::process_config(AMG_Config &in_cfg, std::string solver_scope)
-{
+{   
+    // J
+    // printf("AMG_Solver<T_Config>::process_config\n");
+    // in_cfg.printAMGConfig();
     if (in_cfg.getParameter<int>("print_config", solver_scope) == 1)
     {
         in_cfg.printAMGConfig();

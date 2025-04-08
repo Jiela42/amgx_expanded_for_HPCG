@@ -59,6 +59,8 @@ void colorRowsKernel(const IndexType *A_offsets,
                      const int current_color,
                      const int num_rows)
 {
+    // J
+    // printf("colorRowsKernel1\n");
     const int num_rows_per_grid = gridDim.x * ( kCtaSize / 32 );
     const int lane_id = threadIdx.x % 32;
 
@@ -106,6 +108,8 @@ __global__
 void colorRowsKernel(const IndexType *A_offsets, const IndexType *A_column_indices, IndexType *row_colors,
                      const int current_color, const int num_rows)
 {
+    // J
+    // printf("colorRowsKernel2\n");
     for ( int i = threadIdx.x + blockDim.x * blockIdx.x; i < num_rows ; i += gridDim.x * blockDim.x )
     {
         int my_row_color = 0;
@@ -173,6 +177,8 @@ find_min_max_neighbors_kernel( const int *__restrict A_offsets,
                                const int current_color,
                                const int num_rows )
 {
+    // J
+    // printf("find_min_max_neighbors_kernel\n");
     const int NUM_ROWS_PER_CTA = CTA_SIZE / NUM_THREADS_PER_ROW;
     const int warp_id = threadIdx.x / NUM_THREADS_PER_ROW;
     const int lane_id = threadIdx.x % NUM_THREADS_PER_ROW;
@@ -253,7 +259,9 @@ template <typename IndexType>
 __global__
 void FindMaxMinNeighboursKernel(const IndexType *A_offsets, const IndexType *A_column_indices, IndexType *row_colors, IndexType *max_hash_array, IndexType *min_hash_array,
                                 const int current_color, const int num_rows)
-{
+{   
+    // J
+    // printf("FindMaxMinNeighboursKernel\n");
     for ( int i = threadIdx.x + blockDim.x * blockIdx.x; i < num_rows ; i += gridDim.x * blockDim.x )
     {
         int max_hash;
@@ -292,6 +300,8 @@ __global__
 void colorRowsRingTwoKernel(const IndexType *A_offsets, const IndexType *A_column_indices, IndexType *row_colors, const IndexType *max_hash_array, const IndexType *min_hash_array,
                             const int current_color, const int num_rows)
 {
+    // J
+    printf("colorRowsRingTwoKernel\n");
     for ( int i = threadIdx.x + blockDim.x * blockIdx.x; i < num_rows ; i += gridDim.x * blockDim.x )
     {
         int my_row_color = 0;
@@ -368,7 +378,9 @@ MinMaxMatrixColoringBase<T_Config>::MinMaxMatrixColoringBase(AMG_Config &cfg, co
         m_uncolored_fraction = 0;
     }
     else
-    {
+    {   
+        // J
+        // printf("MinMaxMatrixColoringBase: determinism flag is off\n");
         m_uncolored_fraction = cfg.AMG_Config::template getParameter<double>("max_uncolored_percentage", cfg_scope);
     }
 }
@@ -389,9 +401,14 @@ void MinMaxMatrixColoring<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_in
     thrust_wrapper::fill<AMGX_device>(this->m_row_colors.begin(), this->m_row_colors.end(), 0);
     cudaCheckError();
 
+    // J
+    // printf("num_rows=%d, max_uncolored_rows=%d\n", num_rows, max_uncolored_rows);
+
     for ( int num_uncolored = num_rows; num_uncolored > max_uncolored_rows ; )
     {
 #ifdef USE_EXPERIMENTAL_MIN_MAX
+        // J
+        // printf("ifdef colorMatrixOneRing\n");
         colorRowsKernel<IndexType, threads_per_block> <<< num_blocks, threads_per_block, 0, amgx::thrust::global_thread_handle::get_stream()>>>(
             A.row_offsets.raw(),
             A.col_indices.raw(),
@@ -399,6 +416,9 @@ void MinMaxMatrixColoring<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_in
             this->m_num_colors,
             num_rows);
 #else
+        // J
+        // printf("else colorMatrixOneRing\n");
+        // printf("this->m_num_colors=%d\n", this->m_num_colors);
         colorRowsKernel<IndexType> <<< num_blocks, threads_per_block, 0, amgx::thrust::global_thread_handle::get_stream()>>>(A.row_offsets.raw(), A.col_indices.raw(), row_colors_ptr, this->m_num_colors, num_rows);
 #endif
         cudaCheckError();
@@ -415,6 +435,8 @@ void MinMaxMatrixColoring<TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_in
 template <class T_Config>
 void MinMaxMatrixColoringBase<T_Config>::colorMatrix(Matrix<T_Config> &A)
 {
+    // J
+    // printf("colorMatrix\n");
     ViewType oldView = A.currentView();
     this->m_row_colors.resize(A.row_offsets.size() - 1);
 
@@ -426,7 +448,9 @@ void MinMaxMatrixColoringBase<T_Config>::colorMatrix(Matrix<T_Config> &A)
         FatalError("Calling coloring scheme but coloring level==0", AMGX_ERR_NOT_SUPPORTED_TARGET);
     }
     else if (this->m_coloring_level == 1)
-    {
+    {   
+        // J
+        // printf("else if colorMatrix\n");
         this->colorMatrixOneRing(A);
     }
     else if (this->m_coloring_level == 2)

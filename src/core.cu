@@ -306,6 +306,8 @@ std::vector<std::string> getAllStrength()
 
 inline void registerParameters()
 {
+  // J
+  // printf("Registering parameters\n");
     std::vector<int> bool_flag_values;
     bool_flag_values.push_back(0);
     bool_flag_values.push_back(1);

@@ -1033,6 +1033,7 @@ class Matrix< TemplateConfig<AMGX_host, t_vecPrec, t_matPrec, t_indPrec> > : pub
 
         void colorMatrix(AMG_Config &cfg, const std::string &cfg_scope)
         {
+            printf("matrix.h colorMatrix\n");
             //locally downwind needs aggregates to perform coloring
             if (this->m_matrix_coloring != NULL && this->m_matrix_coloring->release())
             {
@@ -1052,6 +1053,8 @@ class Matrix< TemplateConfig<AMGX_host, t_vecPrec, t_matPrec, t_indPrec> > : pub
             }
             else
             {
+                // J
+                // printf("also here?!\n");
                 this->m_matrix_coloring->colorMatrix(*this);
             }
 
@@ -1225,6 +1228,8 @@ class Matrix< TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> > : p
             // Copy the colors if provided by user
             if (this->hasParameter("coloring") && this->template getParameter<int>("coloring_size") == this->get_num_rows())
             {
+                // J
+                // printf("matrix coloring in the if case\n");
                 IVector_h *row_colors = this->template getParameterPtr< IVector_h >("coloring");
                 this->m_matrix_coloring->setRowColors(*row_colors);
                 int colors_num = this->template getParameter< int >("colors_num");
@@ -1232,6 +1237,8 @@ class Matrix< TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> > : p
             }
             else
             {
+                // J
+                // printf("matrix coloring in the else case\n");
                 this->m_matrix_coloring->colorMatrix(*this);;
             }
 
@@ -1247,15 +1254,15 @@ class Matrix< TemplateConfig<AMGX_device, t_vecPrec, t_matPrec, t_indPrec> > : p
         // J
             // printf("We color the matrix\n");
             // printf("Here is the row_colors\n");
-            // const IVector &row_colors = this->m_matrix_coloring->getRowColors();
+            const IVector &row_colors = this->m_matrix_coloring->getRowColors();
 
             // printf("type of row_colors[0], %s\n", typeid(row_colors[0]).name());
 
 
-            // // Copy the device vector to a host vector
+            // Copy the device vector to a host vector
             // thrust::host_vector<int> row_colors_host = row_colors;
 
-            // // Print the values from the host vector
+            // Print the values from the host vector
             // for (int i = 0; i < this->get_num_rows(); i++) {
             //     printf("row %d: color %d \n", i, row_colors_host[i]);
             // }
