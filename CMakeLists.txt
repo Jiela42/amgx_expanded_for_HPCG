@@ -39,7 +39,9 @@ set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake" ${CMAKE_MODULE_PATH
 
 # Specify the CUDA compiler explicitly
 # set(CMAKE_CUDA_COMPILER /usr/local/cuda-11.2/bin/nvcc)
-set(CMAKE_CUDA_ARCHITECTURES 90a)
+# set(CMAKE_CUDA_ARCHITECTURES 90a)
+set(CMAKE_CUDA_ARCHITECTURES 86)
+
 
 message(STATUS "JielaCUDA Compiler Version: ${CMAKE_CUDA_COMPILER_VERSION}")
 

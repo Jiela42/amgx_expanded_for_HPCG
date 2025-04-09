@@ -39,7 +39,7 @@ void print_callback(const char *msg, int length)
 #include <cuda_runtime.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
+#include <cuda_profiler_api.h>
 
 // Here are some MACROS I defined
 #define NUM_ITERATIONS 10
@@ -282,7 +282,8 @@ std::string write_Problem_to_file(
 
     // create an mtx file
     std::string dims = std::to_string(nx) + "x" + std::to_string(ny) + "x" + std::to_string(nz);
-    std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/problem_" + dims + ".mtx";
+    // std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/problem_" + dims + ".mtx";
+    std::string filename = "/scratch/dknecht/amgx_problems/problem_" + dims + ".mtx";
 
     // check if the file already exists
     std::ifstream infile(filename);
@@ -375,7 +376,8 @@ std::string write_spmv_problem_to_file(int nx, int ny, int nz){
   
       // create an mtx file
       std::string dims = std::to_string(nx) + "x" + std::to_string(ny) + "x" + std::to_string(nz);
-      std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/spmv_problem_" + dims + ".mtx";
+    //   std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/spmv_problem_" + dims + ".mtx";
+      std::string filename = "/scratch/dknecht/amgx_problems/problem_" + dims + ".mtx";
   
       // check if the file already exists
       std::ifstream infile(filename);
@@ -603,6 +605,74 @@ void sequential_symGS(
     }
 }
 
+void run_spmv(std::string problem_filename){
+
+    // run AMGX symGS
+
+    AMGX_config_handle cfg;
+    AMGX_resources_handle rsrc;
+    AMGX_matrix_handle A;
+    AMGX_vector_handle b, x;
+
+    // AMGX_SOLVE_STATUS status;
+
+    //input matrix and rhs/solution
+    int n = 0;
+    int bsize_x = 0;
+    int bsize_y = 0;
+    int sol_size = 0;
+    int sol_bsize = 0;
+
+    // use default mode
+    AMGX_Mode mode = AMGX_mode_dDDI;
+
+        /* init */
+    AMGX_SAFE_CALL(AMGX_initialize());
+    /* system */
+    AMGX_SAFE_CALL(AMGX_register_print_callback(&print_callback));
+    AMGX_SAFE_CALL(AMGX_install_signal_handler());
+    
+
+    // create the config from file
+    std::string symGS_config = "../../examples/HPCG_bench/empty_config.json";
+    AMGX_SAFE_CALL(AMGX_config_create_from_file(&cfg, symGS_config.c_str()));
+    
+    AMGX_resources_create_simple(&rsrc, cfg);
+    AMGX_matrix_create(&A, rsrc, mode);
+    AMGX_vector_create(&x, rsrc, mode);
+    AMGX_vector_create(&b, rsrc, mode);
+    // AMGX_solver_create(&solver, rsrc, mode, cfg);
+
+    AMGX_read_system(A, b, x, problem_filename.c_str());
+    
+    AMGX_matrix_get_size(A, &n, &bsize_x, &bsize_y);
+    AMGX_vector_get_size(x, &sol_size, &sol_bsize);
+
+    // this always happens, our problem does not have an initial guess
+    if (sol_size == 0 || sol_bsize == 0)
+    {
+        AMGX_vector_set_zero(x, n, bsize_x);
+    }
+
+    cudaProfilerStart();
+    AMGX_matrix_vector_multiply(A, b, x);
+    cudaProfilerStop();
+
+    // download solutiion
+    std::vector<double> x_h(n, 0.0);
+    AMGX_vector_download(x, x_h.data());
+
+    // AMGX_solver_destroy(solver);
+    AMGX_vector_destroy(x);
+    AMGX_vector_destroy(b);
+    AMGX_matrix_destroy(A);
+    AMGX_resources_destroy(rsrc);
+    /* destroy config (need to use AMGX_SAFE_CALL after this point) */
+    AMGX_SAFE_CALL(AMGX_config_destroy(cfg));
+    /* shutdown and exit */
+    AMGX_SAFE_CALL(AMGX_finalize());
+    
+}
 
 void bench_spmv(
     CudaTimer& timer,
@@ -748,8 +818,8 @@ void bench_symGS(
         }
 
         // add max_iters to the config
-        int max_iters = 1;
-        AMGX_config_add_parameters(&cfg, ("config_version=2, default:max_iters=" + std::to_string(max_iters)).c_str());
+        // int max_iters = 1;
+        // AMGX_config_add_parameters(&cfg, ("config_version=2, default:max_iters=" + std::to_string(max_iters)).c_str());
 
         timer.startTimer();
         /* solver setup */
@@ -784,6 +854,91 @@ void bench_symGS(
 
 }
 
+void run_symGS(std::string problem_filename)
+{
+    // run AMGX symGS
+
+    AMGX_config_handle cfg;
+    AMGX_resources_handle rsrc;
+    AMGX_matrix_handle A;
+    AMGX_vector_handle b, x;
+    AMGX_solver_handle solver;
+
+    AMGX_SOLVE_STATUS status;
+
+    //input matrix and rhs/solution
+    int n = 0;
+    int bsize_x = 0;
+    int bsize_y = 0;
+    int sol_size = 0;
+    int sol_bsize = 0;
+
+    // use default mode
+    AMGX_Mode mode = AMGX_mode_dDDI;
+
+        /* init */
+    AMGX_SAFE_CALL(AMGX_initialize());
+    /* system */
+    AMGX_SAFE_CALL(AMGX_register_print_callback(&print_callback));
+    AMGX_SAFE_CALL(AMGX_install_signal_handler());
+    
+
+    // create the config from file
+    std::string symGS_config = "../../examples/HPCG_bench/symGS_config.json";
+    AMGX_SAFE_CALL(AMGX_config_create_from_file(&cfg, symGS_config.c_str()));
+    
+    AMGX_resources_create_simple(&rsrc, cfg);
+    AMGX_matrix_create(&A, rsrc, mode);
+    AMGX_vector_create(&x, rsrc, mode);
+    AMGX_vector_create(&b, rsrc, mode);
+    AMGX_solver_create(&solver, rsrc, mode, cfg);
+
+    AMGX_read_system(A, b, x, problem_filename.c_str());
+    
+    AMGX_matrix_get_size(A, &n, &bsize_x, &bsize_y);
+    AMGX_vector_get_size(x, &sol_size, &sol_bsize);
+
+    // this always happens, our problem does not have an initial guess
+    if (sol_size == 0 || sol_bsize == 0)
+    {
+        AMGX_vector_set_zero(x, n, bsize_x);
+    }
+
+    // add max_iters to the config
+    // int max_iters = 1;
+    // AMGX_config_add_parameters(&cfg, ("config_version=2, default:max_iters=" + std::to_string(max_iters)).c_str());
+
+
+    // cudaProfilerStart();
+    /* solver setup */
+    AMGX_solver_setup(solver, A);
+    /* solver solve */
+    AMGX_solver_solve(solver, b, x);
+    // cudaProfilerStop();
+
+    AMGX_solver_get_status(solver, &status);
+
+    printf("SymGS Solver status: %d\n", status);
+
+    // download solutiion
+    std::vector<double> x_h(n, 0.0);
+    AMGX_vector_download(x, x_h.data());
+
+    // print the first 10 values
+    // for(int i = 0; i < 10; i++){
+    //     printf("x[%d]: %f\n", i, x_h[i]);
+    // }
+
+    AMGX_solver_destroy(solver);
+    AMGX_vector_destroy(x);
+    AMGX_vector_destroy(b);
+    AMGX_matrix_destroy(A);
+    AMGX_resources_destroy(rsrc);
+    /* destroy config (need to use AMGX_SAFE_CALL after this point) */
+    AMGX_SAFE_CALL(AMGX_config_destroy(cfg));
+    /* shutdown and exit */
+    AMGX_SAFE_CALL(AMGX_finalize());
+}
 
 void bench_CG(
     CudaTimer& timer,
@@ -934,7 +1089,6 @@ void run_amgx_benchmark(int nx, int ny, int nz, std::string folder_path){
     delete timer;
 }
 
-
 void run_sizeTest(std::string folder_path){
     // run the size test for different sizes
     for(int i = 6; i < 9; i++){
@@ -952,8 +1106,37 @@ void run_sizeTest(std::string folder_path){
     }
 }
 
+void run_profiler(int nx, int ny, int nz, std::string function_name){
+    
+    if (function_name == "SPMV"){
+        std::string spmv_file_name = write_spmv_problem_to_file(nx, ny, nz);
+        run_spmv(spmv_file_name);
+    }
+    if (function_name == "SymGS"){
+        std::cout << "Profiling symGS" << std::endl;
+        std::string file_name = write_Problem_to_file(nx, ny, nz);
+        run_symGS(file_name);
+    }
+
+}
+
 int main(int argc, char* argv[])
 {
+    std::cout << "HPCG_bench main" << std::endl;
+
+    // check if we have user provided arguments (in this case we run the profiler)
+    if (argc > 1){
+        std::cout << "Running profiler" << std::endl;
+        int nx = atoi(argv[1]);
+        int ny = atoi(argv[2]);
+        int nz = atoi(argv[3]);
+
+        std::string function_name = argv[4];
+
+        run_profiler(nx, ny, nz, function_name);
+        return 0;
+    }
+
     // Initialization
     cudaSetDevice(0);
     // register required AMGX parameters 

@@ -7,7 +7,7 @@
                 "monitor_residual": 1,
                 "solver": "MULTICOLOR_GS",
                 "symmetric_GS": 1,
-                "max_iters": 500,
+                "max_iters": 1,
                 "convergence": "RELATIVE_INI",
                 "norm": "L2",
                 "tolerance": 1e-6, 
