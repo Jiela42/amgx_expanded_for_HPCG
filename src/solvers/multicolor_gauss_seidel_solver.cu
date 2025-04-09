@@ -1480,7 +1480,7 @@ MulticolorGaussSeidelSolver_Base<T_Config>::solve_iteration( VVector &b, VVector
 {
     // J
     // printf("solve_iteration\n");
-    cudaProfilerStart();
+    // cudaProfilerStart();
 
     if (xIsZero) { x.dirtybit = 0; }
 
@@ -1615,7 +1615,7 @@ MulticolorGaussSeidelSolver_Base<T_Config>::solve_iteration( VVector &b, VVector
     //if (!this->m_explicit_A->is_matrix_singleGPU() && x.delayed_send==0)
     //  this->m_explicit_A->manager->exchange_halo_async(x, x.tag);
     this->m_explicit_A->setView(oldView);
-    cudaProfilerStop();
+    // cudaProfilerStop();
 
     return this->converged( b, x );
 }
