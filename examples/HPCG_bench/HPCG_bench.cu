@@ -282,8 +282,8 @@ std::string write_Problem_to_file(
 
     // create an mtx file
     std::string dims = std::to_string(nx) + "x" + std::to_string(ny) + "x" + std::to_string(nz);
-    // std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/problem_" + dims + ".mtx";
-    std::string filename = "/scratch/dknecht/amgx_problems/problem_" + dims + ".mtx";
+    std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/problem_" + dims + ".mtx";
+    // std::string filename = "/scratch/dknecht/amgx_problems/problem_" + dims + ".mtx";
 
     // check if the file already exists
     std::ifstream infile(filename);
@@ -376,8 +376,8 @@ std::string write_spmv_problem_to_file(int nx, int ny, int nz){
   
       // create an mtx file
       std::string dims = std::to_string(nx) + "x" + std::to_string(ny) + "x" + std::to_string(nz);
-    //   std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/spmv_problem_" + dims + ".mtx";
-      std::string filename = "/scratch/dknecht/amgx_problems/problem_" + dims + ".mtx";
+      std::string filename = "/iopsstor/scratch/cscs/dknecht/amgx_problems/spmv_problem_" + dims + ".mtx";
+    //   std::string filename = "/scratch/dknecht/amgx_problems/problem_" + dims + ".mtx";
   
       // check if the file already exists
       std::ifstream infile(filename);
